@@ -21,7 +21,7 @@ def getTaoBao():
     if href_list is not None:
         for href in href_list:
             if not ins.is_spider(href):
-               ins.get_page_message(href)
+                ins.get_page_message(href)
 
 
 def getSuNing(page=0, offset=0):
@@ -68,7 +68,7 @@ def getSuNing(page=0, offset=0):
             model = Conditioner.airConditioner(tag_str=img_box["title"], link=href,
                                                title=img_box.select_one("img")["alt"], merchant=store_box.get_text(),
                                                property=parameter, price=price * 100, origin_price=origin_price * 100,
-                                               feedback=score, labels=",".join(labels))
+                                               feedback=score, labels=",".join(labels), platform=ins.platform)
             session.add(model)
             redis_client.sadd(REDIS_KEY, href)
 

@@ -20,16 +20,12 @@ from sqlalchemy import exc
 class taobao():
     href_map_key = "taobao_href"
     spider_key = "taobao_spider"
+    platform = "淘宝"
 
     def __init__(self):
         self.href_list = None
         self.cookie_expired = False
-        options = Options()
-        # # options.add_argument("--headless")
-        # # 设置开发者模式
-        options.add_experimental_option("excludeSwitches", ['enable-automation'])
-        # # 不加载图片
-        # options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
+        options = self.__set_options()
         self.driver = webdriver.Chrome(options=options)
         self.wait = WebDriverWait(self.driver, 30)
         self.driver.maximize_window()
@@ -39,6 +35,14 @@ class taobao():
         self.__check_login()
         if self.cookie is None or self.cookie_expired is True:
             self.login()
+
+    @staticmethod
+    def __set_options():
+        options = Options()
+        # # 设置开发者模式
+        options.add_experimental_option("excludeSwitches", ['enable-automation'])
+
+        return options
 
     # 检查是否登录
     def __check_login(self):
@@ -210,6 +214,7 @@ class taobao():
             self.href_list = [str(href, encoding="utf-8") for href in members]
 
     def get_page_message(self, href):
+        print(href)
         self.driver.get(href)
         try:
             login_btn = self.driver.find_element_by_link_text("请登录")
@@ -224,14 +229,17 @@ class taobao():
         price = origin_price = score = 0
         tags_str = labels_str = title = ""
         if basic is not None:
-            title = basic.select_one(".tb-detail-hd > h1 > a").get_text()
+            title_box = basic.select_one(".tb-detail-hd > h1 > a")
+            if title_box is None:
+                return
+            title = title_box.get_text()
             tag = basic.select_one("#J_DetailMeta > div.tm-clear > div.tb-property > div > div.tb-detail-hd > p")
             if tag is not None:
                 tags = helper.get_char(tag.get_text())
                 tags_str = ",".join(tags)
-            price_box = basic.select_one(".tm-fcs-panel")
-            origin_price = price_box.select_one(".tm-price-panel > dd > .tm-price").get_text()
-            price = price_box.select_one(".tm-promo-panel > dd > .tm-promo-price > .tm-price").get_text()
+            price = self.get_price(basic)
+            origin_price = self.get_origin_price(basic)
+
         merchant = bs4.select_one("#shopExtra > div.slogo > a > strong").get_text()
         parameter_list = bs4.select(".tm-tableAttr > tbody > tr:not(.tm-tableAttrSub)")
         parameter = {}
@@ -239,29 +247,40 @@ class taobao():
             for item in parameter_list:
                 parameter[item.select_one("th").get_text()] = item.select_one("td").get_text()
 
+        ignore = False
         # 用户评价需要点击后加载
-        tags_button = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#J_TabBar > li:nth-child(3)")))
-        tags_button.click()
-        self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#J_Reviews > div > "
-                                                                         "div.rate-header.rate-header-tags")))
-        exit(1)
-        # bs4 = BeautifulSoup(self.driver.page_source, features="html.parser")
-        # rate_box = bs4.select_one("#J_Reviews > div > div.rate-header")
-        # if rate_box is not None:
-        #     score = rate_box.select_one(".rate-score > strong")
-        #     if score is not None:
-        #         score = self.__transToCentesimal(score.get_text())
-        #     tag_list = rate_box.select(".rate-tag-inner > span > a")
-        #     if tag_list is not None:
-        #         labels = [helper.get_char(tag.get_text())[0] for tag in tag_list]
-        #         labels_str = ",".join(labels)
-        # else:
-        #     print("not found tag list")
+        try:
+            self.driver.execute_script("window.scrollTo(0, 200)")
+            tags_button = self.wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#J_TabBar > li:nth-child(3)")))
+            tags_button.click()
+            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#J_Reviews > div > "
+                                                                             "div.rate-header")))
+        except Exception as e:
+            print(e)
+            ignore = True
 
-        model = Conditioner.airConditioner(tag_str=tags_str, link=href,
+        if ignore is False:
+            bs4 = BeautifulSoup(self.driver.page_source, features="html.parser")
+            rate_box = bs4.select_one("#J_Reviews > div > div.rate-header")
+            if rate_box is None:
+                rate_box = bs4.select_one("#J_Reviews > div > div.rate-header.rate-header-tags")
+            if rate_box is not None:
+                score = rate_box.select_one(".rate-score > strong")
+                if score is not None:
+                    score = self.__transToCentesimal(score.get_text())
+                tag_list = rate_box.select(".rate-tag-inner > span > a")
+                if tag_list is not None:
+                    labels = [helper.get_char(tag.get_text())[0] for tag in tag_list]
+                    labels_str = ",".join(labels)
+            else:
+                print("not found tag list")
+        print(score)
+        model = Conditioner.airConditioner(tag_str=tags_str, link=self.driver.current_url,
                                            title=title, merchant=merchant,
-                                           property=parameter, price=float(price)* 100, origin_price=float(origin_price) * 100,
-                                           feedback=score, labels=labels_str)    # 转化成百分制
+                                           property=parameter, price=float(price) * 100,
+                                           origin_price=float(origin_price) * 100,
+                                           feedback=score, labels=labels_str, platform=self.platform)  # 转化成百分制
         session.add(model)
 
         try:
@@ -270,6 +289,31 @@ class taobao():
         except exc.SQLAlchemyError as e:
             print("insert taobao data failed.", e)
             return
+
+    def __get_price_box(self, basic):
+        if basic is not None:
+            return basic.select_one(".tm-fcs-panel")
+
+    def get_origin_price(self, basic):
+        price_box = self.__get_price_box(basic)
+        if price_box is not None:
+            price = price_box.select_one(".tm-price-panel > dd > .tm-price")
+            if price is None:
+                return 0
+            return price.get_text()
+
+    def get_price(self, basic):
+        price_box = self.__get_price_box(basic)
+        if price_box is not None:
+            price = None
+            try:
+                price = price_box.select_one(".tm-promo-panel > dd > .tm-promo-price > .tm-price").get_text()
+            except AttributeError:
+                price = price_box.select_one(".tm-promo-panel > span.tm-price").get_text()
+            finally:
+                if price is None:
+                    return 0
+                return price
 
     # 检查是否爬取过当前页面
     def is_spider(self, href):
