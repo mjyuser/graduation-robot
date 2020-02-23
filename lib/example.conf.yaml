@@ -1,0 +1,16 @@
+database:
+  host: 127.0.0.1
+  user: root
+  password: ""
+  db: appliances
+redis:
+  host: 127.0.0.1
+  port: 6379
+  db: 0
+chaojiying:
+  username: ""
+  password: ""
+  soft_id: ""
+weibo:
+  username: ""
+  password: ""
