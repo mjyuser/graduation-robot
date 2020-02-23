@@ -72,7 +72,7 @@ class sn:
         parameter = {}
         for dd in items:
             if dd.has_attr("parametercode"):
-                name = dd.select_one(".name")
+                name = dd.select_one(".name > .name-inner > span")
                 value = dd.select_one(".val")
                 if name is not None and value is not None:
                     parameter[name.get_text().strip()] = value.get_text().strip()
