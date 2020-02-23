@@ -2,7 +2,7 @@ import requests
 from sqlalchemy import exc
 from bs4 import BeautifulSoup
 import model.airConditioner as Conditioner
-from model.db import Base, session, engine, redis_client
+from model.db import session, engine, redis_client
 from services import sn, taobao
 
 REDIS_KEY = "URL_MAP"
@@ -22,7 +22,6 @@ def getTaoBao():
         for href in href_list:
             if not ins.is_spider(href):
                ins.get_page_message(href)
-
 
 
 def getSuNing(page=0, offset=0):

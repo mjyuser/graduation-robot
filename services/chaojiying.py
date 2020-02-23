@@ -52,9 +52,3 @@ class Chaojiying(object):
         r = requests.post('http://upload.chaojiying.net/Upload/ReportError.php', data=params, headers=self.headers)
         return r.json()
 
-
-if __name__ == '__main__':
-    chaojiying = Chaojiying('y455789298', 'm.j.y.123098', '903564')
-    im = open('https://login.sina.com.cn/cgi/pin.php?r=91213883&s=0&p=yf-b042b4ca080931837e86f72d7b50f1b6054c', 'rb').read()
-    print(chaojiying.PostPic(im, 1902))
-

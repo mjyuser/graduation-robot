@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 import re
 from model.db import Base
-from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint, Index, JSON
+from sqlalchemy import Column, Integer, String, UniqueConstraint, Index, JSON
 
 
 class airConditioner(Base):

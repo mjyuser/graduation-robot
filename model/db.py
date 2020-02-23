@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-import lib.config
+from config.config import config as configClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -9,7 +9,7 @@ import redis
 
 # 获取配置
 Base = declarative_base()
-config = lib.config.config()
+config = configClient()
 
 # 实例化DB
 database = config.database

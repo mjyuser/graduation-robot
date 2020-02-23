@@ -1,4 +1,4 @@
-./lib/config.yaml
+config/config.yaml
 appliance/*
 .idea
 */__pycache__/*
