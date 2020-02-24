@@ -6,6 +6,7 @@ from utils import helper
 
 class sn:
     key = "%E6%99%BA%E8%83%BD%E7%A9%BA%E8%B0%83"
+    platform = "苏宁"
 
     def __init__(self):
         options = Options()
