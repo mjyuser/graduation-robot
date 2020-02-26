@@ -1,9 +1,11 @@
+# coding:utf-8
 import requests
 from sqlalchemy import exc
 from bs4 import BeautifulSoup
 import model.airConditioner as Conditioner
 from model.db import session, engine, redis_client
-from services import sn, taobao
+from services import sn, taobao, jd
+import time
 
 REDIS_KEY = "URL_MAP"
 
@@ -13,6 +15,56 @@ def fetchAir(router):
         getSuNing(page=0, offset=0)
     elif router == "taobao":
         getTaoBao()
+    elif router == "jd":
+        getJd()
+
+
+def getJd():
+    client = jd.jd()
+    # 转到搜索后的列表页
+    page = client.search("智能空调")
+    bs = BeautifulSoup(page, features="html.parser")
+
+    count = 0
+    while count <= 50:
+        items = bs.select("#J_goodsList > .gl-warp > .gl-item")
+        print(len(items))
+        for item in items:
+            try:
+                img_box = item.select_one("div.p-img > a")
+                tag_str = img_box["title"]
+                href = img_box["href"]
+                if not href.startswith("https"):
+                    href = "https:" + href
+                if client.is_spider(href):
+                    continue
+                price = item.select_one("div.p-price > strong > i").get_text()
+                origin_price = price
+                title = item.select_one(".p-name > a > em").get_text()
+                merchant = item.select_one(".p-shop > .J_im_icon > a").get_text()
+
+                model = Conditioner.airConditioner(link=href, merchant=merchant, tag_str=tag_str, title=title,
+                                                   price=float(price) * 100, origin_price=float(origin_price) * 100,
+                                                   platform=client.platform)
+                session.add(model)
+
+                session.commit()
+                client.save_href(href)
+            except Exception as e:
+                print("merchant message: %s, %s" % (title, href))
+                print(e)
+                continue
+
+        # 获取下一页
+        next_page_btn = client.get_driver().find_element_by_css_selector("#J_bottomPage > span.p-num > a.pn-next")
+        if next_page_btn is None:
+            break
+
+        next_page_btn.click()
+        time.sleep(5)
+        client.scroll()
+        time.sleep(5)
+        bs = BeautifulSoup(client.page_source, features="html.parser")
 
 
 def getTaoBao():
