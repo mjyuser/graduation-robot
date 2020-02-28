@@ -5,7 +5,8 @@ from bs4 import BeautifulSoup
 import model.airConditioner as Conditioner
 from model.db import session, engine, redis_client
 from services import sn, taobao, jd
-import time
+from utils import helper
+import traceback
 
 REDIS_KEY = "URL_MAP"
 
@@ -22,49 +23,25 @@ def fetchAir(router):
 def getJd():
     client = jd.jd()
     # 转到搜索后的列表页
-    page = client.search("智能空调")
-    bs = BeautifulSoup(page, features="html.parser")
+    items = client.get_href_from_cache()
+    data = {}
+    for href in items:
+        detail = client.get_detail_page(href, refresh=True)
+        # 获取参数页
+        parameters = detail.select("#detail > div.tab-con > div:nth-child(2) > div.Ptable > div:nth-child(1) > dl > dl")
+        for parameter in parameters:
+            key = parameter.select_one("dt").get_text()
+            val = parameter.select_one("dd").get_text()
+            data[key] = val
 
-    count = 0
-    while count <= 50:
-        items = bs.select("#J_goodsList > .gl-warp > .gl-item")
-        print(len(items))
-        for item in items:
-            try:
-                img_box = item.select_one("div.p-img > a")
-                tag_str = img_box["title"]
-                href = img_box["href"]
-                if not href.startswith("https"):
-                    href = "https:" + href
-                if client.is_spider(href):
-                    continue
-                price = item.select_one("div.p-price > strong > i").get_text()
-                origin_price = price
-                title = item.select_one(".p-name > a > em").get_text()
-                merchant = item.select_one(".p-shop > .J_im_icon > a").get_text()
-
-                model = Conditioner.airConditioner(link=href, merchant=merchant, tag_str=tag_str, title=title,
-                                                   price=float(price) * 100, origin_price=float(origin_price) * 100,
-                                                   platform=client.platform)
-                session.add(model)
-
-                session.commit()
-                client.save_href(href)
-            except Exception as e:
-                print("merchant message: %s, %s" % (title, href))
-                print(e)
-                continue
-
-        # 获取下一页
-        next_page_btn = client.get_driver().find_element_by_css_selector("#J_bottomPage > span.p-num > a.pn-next")
-        if next_page_btn is None:
-            break
-
-        next_page_btn.click()
-        time.sleep(5)
-        client.scroll()
-        time.sleep(5)
-        bs = BeautifulSoup(client.page_source, features="html.parser")
+        productId = helper.get_number(href)
+        score, labels = client.get_comment(productId)
+        model = Conditioner.airConditioner.find_one_by_href(href)
+        dicts = {"property": data, "feedback": score, "labels": labels}
+        try:
+            model.update(dicts)
+        except:
+            print("save model data failed. detail: {}".format(traceback.format_exc()))
 
 
 def getTaoBao():
