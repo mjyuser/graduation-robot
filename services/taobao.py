@@ -12,9 +12,9 @@ import requests
 import os
 from model.db import config, redis_client, session
 from bs4 import BeautifulSoup
-from utils import helper
 import model.airConditioner as Conditioner
 from sqlalchemy import exc
+from utils import helper
 
 
 class taobao():
@@ -107,13 +107,8 @@ class taobao():
 
     # 获取json的配置文件
     def get_filepath(self):
-        rootpath = self.get_rootpath()
+        rootpath = helper.get_rootpath()
         return rootpath + "/cookie.json"
-
-    def get_rootpath(self):
-        curpath = os.path.abspath(os.path.dirname(__file__))
-        rootpath = curpath[:curpath.find("appliance") + len("appliance")]
-        return rootpath
 
     # 获取列表页
     def get_list_url(self, page=0):
@@ -186,11 +181,6 @@ class taobao():
 
         return self.href_list
 
-    def parse_list(self):
-        list_page = self.get_rootpath() + "/list.html"
-        page = open(list_page, "r")
-        return self.__get_detail_url(page)
-
     def __get_detail_url(self, page):
         bs = BeautifulSoup(page, features="html.parser")
         data = bs.find(id="mainsrp-itemlist")
@@ -232,16 +222,21 @@ class taobao():
             title_box = basic.select_one(".tb-detail-hd > h1 > a")
             if title_box is None:
                 return
+            # 标题
             title = title_box.get_text()
+            # 标签
             tag = basic.select_one("#J_DetailMeta > div.tm-clear > div.tb-property > div > div.tb-detail-hd > p")
             if tag is not None:
                 tags = helper.get_char(tag.get_text())
                 tags_str = ",".join(tags)
+            # 当前售价
             price = self.get_price(basic)
+            # 原价
             origin_price = self.get_origin_price(basic)
-
+        # 商家
         merchant = bs4.select_one("#shopExtra > div.slogo > a > strong").get_text()
         parameter_list = bs4.select(".tm-tableAttr > tbody > tr:not(.tm-tableAttrSub)")
+        # 属性
         parameter = {}
         if parameter_list is not None:
             for item in parameter_list:
@@ -249,6 +244,7 @@ class taobao():
 
         ignore = False
         # 用户评价需要点击后加载
+        # 淘宝发爬虫, 一定情况下会弹出滑动验证码, 弹出后跳过
         try:
             self.driver.execute_script("window.scrollTo(0, 200)")
             tags_button = self.wait.until(
@@ -266,16 +262,18 @@ class taobao():
             if rate_box is None:
                 rate_box = bs4.select_one("#J_Reviews > div > div.rate-header.rate-header-tags")
             if rate_box is not None:
+                # 好评率
                 score = rate_box.select_one(".rate-score > strong")
                 if score is not None:
+                    # 跟苏宁评分规则不一致, 转化成百分制
                     score = self.__transToCentesimal(score.get_text())
                 tag_list = rate_box.select(".rate-tag-inner > span > a")
                 if tag_list is not None:
+                    # 评价标签, 部分商品不存在评价标签
                     labels = [helper.get_char(tag.get_text())[0] for tag in tag_list]
                     labels_str = ",".join(labels)
             else:
                 print("not found tag list")
-        print(score)
         model = Conditioner.airConditioner(tag_str=tags_str, link=self.driver.current_url,
                                            title=title, merchant=merchant,
                                            property=parameter, price=float(price) * 100,

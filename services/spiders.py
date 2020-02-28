@@ -1,9 +1,12 @@
+# coding:utf-8
 import requests
 from sqlalchemy import exc
 from bs4 import BeautifulSoup
 import model.airConditioner as Conditioner
 from model.db import session, engine, redis_client
-from services import sn, taobao
+from services import sn, taobao, jd
+from utils import helper
+import traceback
 
 REDIS_KEY = "URL_MAP"
 
@@ -13,6 +16,32 @@ def fetchAir(router):
         getSuNing(page=0, offset=0)
     elif router == "taobao":
         getTaoBao()
+    elif router == "jd":
+        getJd()
+
+
+def getJd():
+    client = jd.jd()
+    # 转到搜索后的列表页
+    items = client.get_href_from_cache()
+    data = {}
+    for href in items:
+        detail = client.get_detail_page(href, refresh=True)
+        # 获取参数页
+        parameters = detail.select("#detail > div.tab-con > div:nth-child(2) > div.Ptable > div:nth-child(1) > dl > dl")
+        for parameter in parameters:
+            key = parameter.select_one("dt").get_text()
+            val = parameter.select_one("dd").get_text()
+            data[key] = val
+
+        productId = helper.get_number(href)
+        score, labels = client.get_comment(productId)
+        model = Conditioner.airConditioner.find_one_by_href(href)
+        dicts = {"property": data, "feedback": score, "labels": labels}
+        try:
+            model.update(dicts)
+        except:
+            print("save model data failed. detail: {}".format(traceback.format_exc()))
 
 
 def getTaoBao():
