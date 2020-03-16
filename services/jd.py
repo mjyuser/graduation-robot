@@ -5,7 +5,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
 from model.db import session, redis_client
 from model.airConditioner import airConditioner
+from utils import helper
 import requests
+import traceback
+from multiprocessing import Process, Queue
+import platform
+import os
 
 import time
 
@@ -13,14 +18,18 @@ import time
 class jd:
     website = "https://www.jd.com"
     parameter_selector = "#detail > div.tab-con > div:nth-child(2) > .Ptable > .Ptable-items > dl > dl"
-    platform = "京东"
+    website_name = "京东"
     href_map = "JD_URL"
+    record_href_map = "JD_RECORD"
 
     def __init__(self):
         self.driver = None
         self.detail = None
         self.redis = redis_client
         self.wait = None
+        self.queue = None
+        self._consumer = None
+        self._platform = platform.system()
         self._headers = {
             "DNT": "1",
             "sec-ch-ua": "Google Chrome 74",
@@ -40,6 +49,19 @@ class jd:
             "fold": "1",
         }
 
+        # self.create_queue()
+        # self.create_consumer()
+
+    @property
+    def platform(self):
+        return self._platform
+
+    def is_windows(self):
+        return self.platform == "Windows"
+
+    def is_Linux(self):
+        return self.platform == "Linux"
+
     @property
     def params(self):
         return self._params
@@ -47,6 +69,14 @@ class jd:
     @params.setter
     def params(self, value):
         self._params.update(value)
+
+    @property
+    def headers(self):
+        return self._headers
+
+    @headers.setter
+    def headers(self, value):
+        self._headers.update(value)
 
     def get_driver(self):
         if self.driver is None:
@@ -61,7 +91,7 @@ class jd:
     @property
     def options(self):
         options = Options()
-        # options.add_argument("--headless")
+        options.add_argument("--headless")
         prefs = {
             'profile.default_content_setting_values': {
                 'images': 2,
@@ -72,6 +102,11 @@ class jd:
 
         return options
 
+    @property
+    def page_source(self):
+        return self.get_driver().page_source
+
+    # 调用京东的搜索框
     def search(self, key):
         driver = self.get_driver()
         driver.get(self.website)
@@ -81,47 +116,64 @@ class jd:
 
         time.sleep(3)
         self.scroll()
+        # 防止页面未加载成功
         time.sleep(3)
         return driver.page_source
 
+    # 滑动右侧滑动条
     def scroll(self):
         self.get_driver().execute_script("window.scrollTo(0, document.body.scrollHeight)")
 
-    @property
-    def page_source(self):
-        return self.get_driver().page_source
-
-    # 详情页信息
-    def get_detail(self, href) -> dict:
-        detail = self.get_detail_page(href, refresh=True)
-        if detail is None:
-            return {}
-        parameter = {}
-        items = detail.select(self.parameter_selector)
-        for data in items:
-            key = data.select_one("dt").get_text()
-            value = data.select_one("dd").get_text()
-            parameter[key] = value
-
-        return parameter
-
-    def get_detail_page(self, href, refresh=False):
-        if self.detail is None or refresh is True:
-            response = requests.get(href)
-            print(response.url)
-            if response.status_code != 200:
-                return
-            self.detail = BeautifulSoup(response.content, features="html.parser")
-        return self.detail
-
+    # 保存爬取下来的详情页链接
     def save_href(self, href) -> None:
         if not self.is_spider(href):
             self.redis.sadd(self.href_map, href)
 
-    def is_spider(self, href):
-        return self.redis.sismember(self.href_map, href)
+            # 将链接输入到队列当中, 另一个进程进行消费
+            if self.queue is not None:
+                self.queue.put(href)
 
-    def get_href_list(self, key):
+    # 详情页信息
+    def get_detail(self, href):
+        detail = self.get_detail_page(href, refresh=True)
+        data = {}
+        # 获取参数页
+        parameters = detail.select("#detail > div.tab-con > div:nth-child(2) > div.Ptable > div:nth-child(1) > dl > dl")
+        for parameter in parameters:
+            key = parameter.select_one("dt").get_text()
+            val = parameter.select_one("dd").get_text()
+            data[key] = val
+
+        productId = helper.get_number(href)
+        score, labels = self.get_comment(productId)
+        model = airConditioner.find_one_by_href(href)
+        dicts = {"property": data, "feedback": score, "labels": labels}
+        try:
+            model.update(dicts)
+        except:
+            print("save model data failed. detail: {}".format(traceback.format_exc()))
+
+    def get_detail_page(self, href, refresh=False):
+        if self.detail is None or refresh is True:
+            content = self.fetch_detail_page_content(href)
+            if content is not None:
+                self.detail = BeautifulSoup(content, features="html.parser")
+        return self.detail
+
+    # 请求详情页的内容
+    def fetch_detail_page_content(self, href):
+        print("fetch %s" % href)
+        response = requests.get(href)
+        if response.status_code != 200:
+            print("fetch %s failed, the response code is %d" % (href, response.status_code))
+            return
+        return response.content
+
+    def is_spider(self, href):
+        count = airConditioner.find_one_by_href(href).count()
+        return self.redis.sismember(self.href_map, href) or count > 0
+
+    def get_jd_data(self, key):
         page = self.search(key)
         bs = BeautifulSoup(page, features="html.parser")
 
@@ -136,47 +188,52 @@ class jd:
                     if not href.startswith("https"):
                         href = "https:" + href
                     if self.is_spider(href):
+                        print("the href %s is spidered" % href)
                         continue
                     price = item.select_one("div.p-price > strong > i").get_text()
                     origin_price = price
                     title = item.select_one(".p-name > a > em").get_text()
                     merchant = item.select_one(".p-shop > .J_im_icon > a").get_text()
-
                     model = airConditioner(link=href, merchant=merchant, tag_str=tag_str, title=title,
                                            price=float(price) * 100, origin_price=float(origin_price) * 100,
-                                           platform=self.platform)
+                                           platform=self.website_name)
                     session.add(model)
 
                     session.commit()
-                    self.save_href(href)
+                    # self.save_href(href)
                 except Exception as e:
-                    print("merchant message: %s, %s" % (title, href))
+                    print("merchant message: %s" % href)
                     print(e)
                     continue
+
+                # 爬取后续数据
+                self.get_detail(href)
 
             # 获取下一页
             next_page_btn = self.get_driver().find_element_by_css_selector("#J_bottomPage > span.p-num > a.pn-next")
             if next_page_btn is None:
                 break
-
+            count = count + 1
             next_page_btn.click()
             # 等待页面加载 JD的商品页会下拉加载, 强制sleep 5s
             self.scroll()
             time.sleep(5)
             bs = BeautifulSoup(self.page_source, features="html.parser")
 
+        # 等待队列消费完毕
+        # self.queue.join()
+
     def get_href_from_cache(self):
         items = self.redis.smembers(self.href_map)
         return [str(href, encoding="utf-8") for href in items]
 
-    @property
-    def headers(self):
-        return self._headers
+    def save_page_is_spider(self, href) -> None:
+        self.redis.sadd(self.record_href_map, href)
 
-    @headers.setter
-    def headers(self, value):
-        self._headers.update(value)
+    def detail_is_spider(self, href) -> bool:
+        return self.redis.sismember(self.record_href_map, href)
 
+    # 获取评论数据
     def get_comment(self, product_id):
         self.headers = {"Referer": "https://item.jd.com/{productId}.html".format(productId=product_id)}
         self.params = {"productId": product_id}
@@ -192,6 +249,7 @@ class jd:
             print(e)
         return
 
+    # 获取评论标签
     def get_labels(self):
         selector = "#detail > div.tab-con > div:nth-child(2) > div.Ptable > div:nth-child(1) > dl > dl"
         parameters = self.detail.select(selector)
@@ -202,4 +260,20 @@ class jd:
             data[key] = val
         return data
 
-    def get_
+    def create_queue(self):
+        if self.queue is None and self.is_Linux():
+            print('Process to read: %s' % os.getpid())
+            self.queue = Queue()
+
+    def create_consumer(self):
+        if self.is_Linux() and self._consumer is None:
+            self._consumer = Process(target=self.consumer)
+
+            self._consumer.start()
+
+    def consumer(self):
+        while True:
+            href = self.queue.get()
+            self.get_detail(href)
+            if self.queue.empty():
+                break
