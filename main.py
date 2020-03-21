@@ -3,6 +3,7 @@ from model.db import Base, engine
 from services import spiders
 import sys
 import getopt
+from model.airConditioner import airConditioner
 
 
 def main(argv):
@@ -42,6 +43,12 @@ def print_help():
 
 def init_db():
     Base.metadata.create_all(engine)
+
+
+def testOrm():
+    items = airConditioner.find_all_by_platform("淘宝")
+    if len(items) > 0:
+        print(items[0])
 
 
 if __name__ == "__main__":

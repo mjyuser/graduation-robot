@@ -62,8 +62,12 @@ class taobao():
     # 通过微博登录淘宝
     def login(self):
         self.driver.get("https://login.taobao.com/member/login.jhtml")
-        self.driver.find_element_by_class_name("J_Quick2Static").click()
-        self.driver.find_element_by_class_name("weibo-login").click()
+        try:
+            self.driver.find_element_by_class_name("weibo-login").click()
+        except Exception as e:
+            self.driver.find_element_by_id("J_Quick2Static").click()
+            self.driver.find_element_by_class_name("weibo-login").click()
+
         username = self.driver.find_element_by_name("username")
         username.send_keys(config.weibo["username"])
         time.sleep(1)
@@ -148,7 +152,7 @@ class taobao():
 
     def get_goods_list(self, force=False):
         self.__load_href()
-        if self.href_list is None or force is True:
+        if len(self.href_list) == 0 or force is True:
             # 输入搜索框
             try:
                 search_input = self.driver.find_element_by_class_name("search-combobox-input")
@@ -169,7 +173,7 @@ class taobao():
                         next_button.click()
                 except Exception as e:
                     print("获取下一页异常, message: ", e)
-                    return
+                    return self.href_list
 
                 # 加载数据列表
                 self.__load_href()
@@ -179,6 +183,7 @@ class taobao():
                 print(e)
                 return
 
+        print("process goods list")
         return self.href_list
 
     def __get_detail_url(self, page):
@@ -231,6 +236,9 @@ class taobao():
                 tags_str = ",".join(tags)
             # 当前售价
             price = self.get_price(basic)
+            if isinstance(price, str) and price.find("-") != -1:
+                price = str.split(price, "-")[0]
+
             # 原价
             origin_price = self.get_origin_price(basic)
         # 商家
