@@ -34,3 +34,20 @@ class airConditioner(Base):
     @staticmethod
     def find_one_by_href(href):
         return session.query(airConditioner).filter_by(link=href)
+
+    @staticmethod
+    def find_by_platform(platform):
+        return session.query(airConditioner).filter(airConditioner.platform == platform).all()
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    @staticmethod
+    def to_json(models):
+        v = [model.to_dict() for model in models]
+        return v
+
+    @staticmethod
+    def find_all_by_platform(platform) -> list:
+        models = airConditioner.find_by_platform(platform)
+        return airConditioner.to_json(models)
