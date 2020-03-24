@@ -4,6 +4,7 @@ from config.config import config as configClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from model.mongo import Mongo
 import redis
 
 try:
@@ -18,7 +19,7 @@ try:
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    res = engine.execute("select version()")
+    mgocli = Mongo(config.mongo["host"], config.mongo["port"])
 
     # 实例化Redis
     redis_config = config.redis_config

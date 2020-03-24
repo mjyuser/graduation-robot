@@ -21,3 +21,14 @@ class config:
         self.redis_config = data['redis']
         self.chaojiying = data['chaojiying']
         self.weibo = data['weibo']
+        self.mongo = data['mongo']
+
+        self.itemName = data['itemName']
+
+    def get(self, key):
+        if hasattr(self, key):
+            return getattr(self, key)
+        return ""
+
+    def get_item_name(self):
+        return self.get("itemName")

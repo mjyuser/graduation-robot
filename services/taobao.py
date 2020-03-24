@@ -10,9 +10,9 @@ import json
 from services import chaojiying
 import requests
 import os
-from model.db import config, redis_client, session
+from model.db import config, redis_client, mgocli
+from model.mgo_ac import mechina
 from bs4 import BeautifulSoup
-import model.airConditioner as Conditioner
 from sqlalchemy import exc
 from utils import helper
 
@@ -64,8 +64,8 @@ class taobao():
         self.driver.get("https://login.taobao.com/member/login.jhtml")
         try:
             self.driver.find_element_by_class_name("weibo-login").click()
-        except Exception as e:
-            self.driver.find_element_by_id("J_Quick2Static").click()
+        except:
+            self.driver.find_element_by_class_name("J_Quick2Static").click()
             self.driver.find_element_by_class_name("weibo-login").click()
 
         username = self.driver.find_element_by_name("username")
@@ -111,13 +111,13 @@ class taobao():
 
     # 获取json的配置文件
     def get_filepath(self):
-        rootpath = helper.get_rootpath()
+        rootpath = self.get_rootpath()
         return rootpath + "/cookie.json"
 
-    # 获取列表页
-    def get_list_url(self, page=0):
-        url = "https://uland.taobao.com/sem/tbsearch?keyword={key}&page={page}".format(key=self.key, page=page)
-        return url
+    def get_rootpath(self):
+        curpath = os.path.abspath(os.path.dirname(__file__))
+        rootpath = curpath[:curpath.find(config.get_item_name()) + len(config.get_item_name())]
+        return rootpath
 
     def get_captcha(self, name="captcha.png"):
         try:
@@ -150,13 +150,13 @@ class taobao():
                                                                "div.site-nav-menu-hd > div.site-nav-user > "
                                                                "a.site-nav-login-info-nick")))
 
-    def get_goods_list(self, force=False):
+    def get_goods_list(self, key, force=False):
         self.__load_href()
         if len(self.href_list) == 0 or force is True:
             # 输入搜索框
             try:
                 search_input = self.driver.find_element_by_class_name("search-combobox-input")
-                search_input.send_keys(r"智能空调")
+                search_input.send_keys(key)
                 search_input.send_keys(Keys.ENTER)
 
                 # 获取当前页的所有详情页的url
@@ -241,14 +241,19 @@ class taobao():
 
             # 原价
             origin_price = self.get_origin_price(basic)
+            if isinstance(origin_price, str) and origin_price.find("-") != -1:
+                origin_price = str.split(origin_price, "-")[0]
         # 商家
         merchant = bs4.select_one("#shopExtra > div.slogo > a > strong").get_text()
-        parameter_list = bs4.select(".tm-tableAttr > tbody > tr:not(.tm-tableAttrSub)")
+        parameter_list = bs4.select("#J_AttrUL > li")
         # 属性
         parameter = {}
         if parameter_list is not None:
             for item in parameter_list:
-                parameter[item.select_one("th").get_text()] = item.select_one("td").get_text()
+                text = item.get_text()
+                text = str.replace(str.replace(text, "：", ":"), ": ", ":")
+                d = str.split(text, ":")
+                parameter[d[0]] = "".join(d[1])
 
         ignore = False
         # 用户评价需要点击后加载
@@ -282,17 +287,24 @@ class taobao():
                     labels_str = ",".join(labels)
             else:
                 print("not found tag list")
-        model = Conditioner.airConditioner(tag_str=tags_str, link=self.driver.current_url,
-                                           title=title, merchant=merchant,
-                                           property=parameter, price=float(price) * 100,
-                                           origin_price=float(origin_price) * 100,
-                                           feedback=score, labels=labels_str, platform=self.platform)  # 转化成百分制
-        session.add(model)
+        model = mechina(mgocli.instance)
+        data = {
+            "tags": tags_str,
+            "link": self.driver.current_url,
+            "title": title,
+            "merchant": merchant,
+            "property": parameter,
+            "price": float(price) * 100,
+            "origin_price": float(origin_price) * 100,
+            "feedback": score,
+            "labels": labels_str,
+            "platform": self.platform
+        }
 
         try:
-            session.commit()
+            model.insert(data)
             redis_client.sadd(self.spider_key, href)
-        except exc.SQLAlchemyError as e:
+        except Exception as e:
             print("insert taobao data failed.", e)
             return
 

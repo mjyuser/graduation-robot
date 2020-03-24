@@ -3,8 +3,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
-from model.db import session, redis_client
-from model.airConditioner import airConditioner
+from model.db import redis_client, mgocli
+from model.mgo_ac import mechina
 from utils import helper
 import requests
 import traceback
@@ -48,6 +48,8 @@ class jd:
             "isShadowSku": "0",
             "fold": "1",
         }
+
+        self.mongocli = mechina(mgocli.instance)
 
         # self.create_queue()
         # self.create_consumer()
@@ -134,7 +136,11 @@ class jd:
                 self.queue.put(href)
 
     # 详情页信息
-    def get_detail(self, href):
+    def get_detail(self, _id):
+        model = self.mongocli.find_by_id(_id)
+        href = ""
+        if model is not None:
+            href = model["link"]
         detail = self.get_detail_page(href, refresh=True)
         data = {}
         # 获取参数页
@@ -146,10 +152,11 @@ class jd:
 
         productId = helper.get_number(href)
         score, labels = self.get_comment(productId)
-        model = airConditioner.find_one_by_href(href)
         dicts = {"property": data, "feedback": score, "labels": labels}
+        print(dicts)
         try:
-            model.update(dicts)
+            res = self.mongocli.upsert(_id, dicts)
+            print("prit res: %s" % res)
         except:
             print("save model data failed. detail: {}".format(traceback.format_exc()))
 
@@ -170,8 +177,8 @@ class jd:
         return response.content
 
     def is_spider(self, href):
-        count = airConditioner.find_one_by_href(href).count()
-        return self.redis.sismember(self.href_map, href) or count > 0
+        data = self.mongocli.find({"link": href})
+        return self.redis.sismember(self.href_map, href) or data is not None
 
     def get_jd_data(self, key):
         page = self.search(key)
@@ -190,24 +197,34 @@ class jd:
                     if self.is_spider(href):
                         print("the href %s is spidered" % href)
                         continue
+                    print("url: %s" % href)
                     price = item.select_one("div.p-price > strong > i").get_text()
                     origin_price = price
                     title = item.select_one(".p-name > a > em").get_text()
-                    merchant = item.select_one(".p-shop > .J_im_icon > a").get_text()
-                    model = airConditioner(link=href, merchant=merchant, tag_str=tag_str, title=title,
-                                           price=float(price) * 100, origin_price=float(origin_price) * 100,
-                                           platform=self.website_name)
-                    session.add(model)
+                    merchant = "自营"
+                    merchant_box = item.select_one(".p-shop > .J_im_icon > a")
+                    if merchant_box is not None:
+                        merchant = merchant_box.get_text()
 
-                    session.commit()
-                    # self.save_href(href)
+
+
+                    data = {
+                        "tags": tag_str,
+                        "link": href,
+                        "title": title,
+                        "merchant": merchant,
+                        "price": float(price) * 100,
+                        "origin_price": float(origin_price) * 100,
+                        "platform": self.website_name
+                    }
+                    _id = self.mongocli.insert(data)
+                    redis_client.sadd(self.href_map, href)
                 except Exception as e:
-                    print("merchant message: %s" % href)
-                    print(e)
-                    continue
-
+                    print(traceback.format_exc())
+                    print("insert JD data failed.", e)
+                    return
                 # 爬取后续数据
-                self.get_detail(href)
+                self.get_detail(_id)
 
             # 获取下一页
             next_page_btn = self.get_driver().find_element_by_css_selector("#J_bottomPage > span.p-num > a.pn-next")

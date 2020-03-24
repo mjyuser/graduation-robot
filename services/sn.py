@@ -5,10 +5,10 @@ from utils import helper
 
 
 class sn:
-    key = "%E6%99%BA%E8%83%BD%E7%A9%BA%E8%B0%83"
     platform = "苏宁"
 
-    def __init__(self):
+    def __init__(self, key):
+        self.key = key
         options = Options()
         options.add_argument("--headless")
         self.driver = webdriver.Chrome(options=options)

@@ -1,17 +1,16 @@
 # coding:utf-8
 import requests
-from sqlalchemy import exc
 from bs4 import BeautifulSoup
 import model.airConditioner as Conditioner
-from model.db import session, engine, redis_client
-from services import sn, taobao, jd
+from model.db import mgocli, engine, redis_client
+from model.mgo_ac import mechina
+from services import jd, sn, taobao
 
 REDIS_KEY = "URL_MAP"
 
-
 def fetchAir(router):
     if router == "sn":
-        getSuNing(page=0, offset=0)
+        getSuNing(r'智能机器人', page=0, offset=0)
     elif router == "taobao":
         getTaoBao()
     elif router == "jd":
@@ -21,23 +20,24 @@ def fetchAir(router):
 def getJd():
     client = jd.jd()
     # 转到搜索后的列表页
-    client.get_jd_data("智能空调")
+    client.get_jd_data(r"智能机器人")
     # client.consumer()
 
 
 def getTaoBao():
     ins = taobao.taobao()
-    href_list = ins.get_goods_list()
+    href_list = ins.get_goods_list(r'智能机器人')
     if href_list is not None:
         for href in href_list:
             if not ins.is_spider(href):
                 ins.get_page_message(href)
 
 
-def getSuNing(page=0, offset=0):
+def getSuNing(key, page=0, offset=0):
     while True:
-        ins = sn.sn()
+        ins = sn.sn(key)
         url = ins.get_list_url(page, offset)
+        print(url)
         response = requests.get(url)
         if response.status_code != 200:
             print("获取苏宁家电异常, url:%s, code:%d" % (url, response.status_code))
@@ -75,18 +75,29 @@ def getSuNing(page=0, offset=0):
             # 获取评价标签
             labels = ins.get_evaluate_labels()
             # 插入DB
-            model = Conditioner.airConditioner(tag_str=img_box["title"], link=href,
-                                               title=img_box.select_one("img")["alt"], merchant=store_box.get_text(),
-                                               property=parameter, price=price * 100, origin_price=origin_price * 100,
-                                               feedback=score, labels=",".join(labels), platform=ins.platform)
-            session.add(model)
-            redis_client.sadd(REDIS_KEY, href)
+
+            model = mechina(mgocli.instance)
+            data = {
+                "tags": img_box["title"],
+                "link": href,
+                "title": img_box.select_one("img")["alt"],
+                "merchant": store_box.get_text(),
+                "property": parameter,
+                "price": price * 100,
+                "origin_price": origin_price * 100,
+                "feedback": score,
+                "labels": ",".join(labels),
+                "platform": ins.platform
+            }
+
+            print(data)
 
             try:
-                session.commit()
-            except exc.SQLAlchemyError as e:
-                print("sql failed", e)
-                continue
+                model.insert(data)
+                redis_client.sadd(REDIS_KEY, href)
+            except Exception as e:
+                print("insert taobao data failed.", e)
+                return
 
         # 苏宁的web规则, paging的值为0~3
         if offset <= 3:
