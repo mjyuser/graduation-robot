@@ -7,7 +7,7 @@ import os
 
 class Logger:
     def __init__(self):
-        log_path = helper.get_rootpath(cfg.get_item_name()) + "/logs"
+        log_path = helper.get_rootpath(cfg.get("itemName")) + "/logs"
         log_name = log_path + "/app.log"
         if not os.path.exists(log_path):
             os.mkdir(log_path)

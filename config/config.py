@@ -29,11 +29,9 @@ class config:
         # self.itemName = data['itemName']
 
     def get(self, key):
-        if hasattr(self, key):
-            return getattr(self, key)
-        return ""
-
-    def get_key(self, key):
+        # if hasattr(self, key):
+        #     return getattr(self, key)
+        # return ""
         keys = str.split(key, ".")
         val = self.__search_key(keys, self.__data)
         return val
@@ -50,9 +48,6 @@ class config:
                     else:
                         return self.__search_key(keys, data[key])
         return ""
-
-    def get_item_name(self):
-        return self.get("itemName")
 
 
 cfg = config()

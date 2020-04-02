@@ -7,10 +7,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 import time
 import json
+
+from config.config import cfg
+from model.redis import rediscli
 from services import chaojiying
 import requests
 import os
-from model.db import config, redis_client
 from model.robot import robot
 from model.mongo import mgocli
 from bs4 import BeautifulSoup
@@ -32,6 +34,7 @@ class taobao():
         self.filepath = self.get_filepath()
         self.cookie = None
         self.mgocli = robot(mgocli.instance)
+        self.redis = rediscli.instance
 
         # 检查登录态
         self.__check_login()
@@ -71,16 +74,16 @@ class taobao():
             self.driver.find_element_by_class_name("weibo-login").click()
 
         username = self.driver.find_element_by_name("username")
-        username.send_keys(config.weibo["username"])
+        username.send_keys(cfg.get("weibo.username"))
         time.sleep(1)
         password = self.driver.find_element_by_name("password")
-        password.send_keys(config.weibo["password"])
+        password.send_keys(cfg.get("weibo.password"))
         time.sleep(1)
         captcha = self.get_captcha()
         if captcha is not None:
             captcha_input = self.driver.find_element_by_name("verifycode")
-            client = chaojiying.Chaojiying(config.chaojiying["username"], config.chaojiying["password"],
-                                           config.chaojiying["soft_id"])
+            client = chaojiying.Chaojiying(cfg.get("chaojiying.username"), cfg.get("chaojiying.password"),
+                                           cfg.get("chaojiying.soft_id"))
             client.PostPic(captcha, 1902)
             captcha_input.send_keys(client.pic_str)
         self.driver.find_element_by_class_name("W_btn_g").click()
@@ -118,7 +121,7 @@ class taobao():
 
     def get_rootpath(self):
         curpath = os.path.abspath(os.path.dirname(__file__))
-        rootpath = curpath[:curpath.find(config.get_item_name()) + len(config.get_item_name())]
+        rootpath = curpath[:curpath.find(cfg.get("itemName")) + len(cfg.get("itemName"))]
         return rootpath
 
     def get_captcha(self, name="captcha.png"):
@@ -200,14 +203,14 @@ class taobao():
                         href = message_box["href"]
                         if not href.startswith("http"):
                             href = "https:" + href
-                        if redis_client.sismember(self.href_map_key, href) is False:
-                            redis_client.sadd(self.href_map_key, href)
+                        if self.redis.sismember(self.href_map_key, href) is False:
+                            self.redis.sadd(self.href_map_key, href)
 
     # 加载列表
     def __load_href(self):
-        count = redis_client.scard(self.href_map_key)
+        count = self.redis.scard(self.href_map_key)
         if self.href_list is None or len(self.href_list) < count:
-            members = redis_client.smembers(self.href_map_key)
+            members = self.redis.smembers(self.href_map_key)
             self.href_list = [str(href, encoding="utf-8") for href in members]
 
     def get_page_message(self, href):
@@ -305,7 +308,7 @@ class taobao():
 
         try:
             self.mgocli.insert(data)
-            redis_client.sadd(self.spider_key, href)
+            self.redis.sadd(self.spider_key, href)
         except Exception as e:
             print("insert taobao data failed.", e)
             return
@@ -337,7 +340,7 @@ class taobao():
 
     # 检查是否爬取过当前页面
     def is_spider(self, href):
-        if redis_client.sismember(self.spider_key, href):
+        if self.redis.sismember(self.spider_key, href):
             return True
         return False
 

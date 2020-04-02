@@ -1,11 +1,17 @@
+import requests
 from selenium.webdriver.chrome.options import Options
 from selenium import webdriver
 from bs4 import BeautifulSoup
+
+from model.mongo import mgocli
+from model.redis import rediscli
+from model.robot import robot
 from utils import helper
 
 
 class sn:
     platform = "苏宁"
+    REDIS_KEY = "URL_MAP"
 
     def __init__(self, key):
         self.key = key
@@ -16,6 +22,80 @@ class sn:
         self.evaluate_page = None
         self.home_url = None
         self.evaluate_warp = None
+        self.redis = rediscli.instance
+        self.mongo = mgocli
+
+    def get_data(self, page, offset):
+        while True:
+            url = self.get_list_url(page, offset)
+            print(url)
+            response = requests.get(url)
+            if response.status_code != 200:
+                print("获取苏宁家电异常, url:%s, code:%d" % (url, response.status_code))
+                return
+
+            ct = response.headers["Content-type"].split("charset=")[1].lower()
+            bs = BeautifulSoup(response.content, features="html.parser", from_encoding=ct)
+
+            data = bs.find_all("li", class_="basic")
+            if not data:
+                break
+
+            for item in data:
+                box = item.select_one(".product-box")
+                img_box = box.select_one(".res-img > .img-block > a")
+                store_box = box.select_one(".store-stock > a")
+                href = img_box["href"]
+                if not href.startswith("http"):
+                    href = "https:" + href
+                if self.redis.sismember(self.REDIS_KEY, href) > 0:
+                    print("the url is scraped. url:%s" % href)
+                    continue
+
+                print("fetch href: %s" % href)
+
+                # 空调相关的参数
+                parameter = self.get_parameter(href)
+                # 获取售卖价格
+                price = self.get_price()
+                # 获取原价
+                origin_price = self.get_origin_price()
+
+                # 获取好评率
+                score = self.get_evaluate_score()
+                # 获取评价标签
+                labels = self.get_evaluate_labels()
+                # 插入DB
+
+                model = robot(self.mongo.instance)
+                data = {
+                    "tags": img_box["title"],
+                    "link": href,
+                    "title": img_box.select_one("img")["alt"],
+                    "merchant": store_box.get_text(),
+                    "property": parameter,
+                    "price": price * 100,
+                    "origin_price": origin_price * 100,
+                    "feedback": score,
+                    "labels": ",".join(labels),
+                    "platform": self.platform
+                }
+
+                try:
+                    model.insert(data)
+                    self.redis.sadd(self.REDIS_KEY, href)
+                except Exception as e:
+                    print("insert taobao data failed.", e)
+                    return
+
+            # 苏宁的web规则, paging的值为0~3
+            if offset <= 3:
+                offset = offset + 1
+            else:
+                page = page + 1
+                offset = 0
+            if page > 50:
+                break
 
     def build_dom(self, content):
         return BeautifulSoup(content, features="html.parser")

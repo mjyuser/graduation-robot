@@ -3,7 +3,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
-from model.db import redis_client
+from model.redis import rediscli
 from model.robot import robot
 from model.mongo import mgocli
 from utils import helper
@@ -26,7 +26,7 @@ class jd:
     def __init__(self):
         self.driver = None
         self.detail = None
-        self.redis = redis_client
+        self.redis = rediscli.instance
         self.wait = None
         self.queue = None
         self._consumer = None
@@ -219,7 +219,7 @@ class jd:
                         "platform": self.website_name
                     }
                     _id = self.mongocli.insert(data)
-                    redis_client.sadd(self.href_map, href)
+                    self.redis.sadd(self.href_map, href)
                 except Exception as e:
                     print(traceback.format_exc())
                     print("insert JD data failed.", e)

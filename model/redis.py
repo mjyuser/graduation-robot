@@ -1,5 +1,7 @@
 import redis
 
+from config.config import cfg
+
 
 class Redis:
     def __init__(self, host, port, db=0):
@@ -13,4 +15,7 @@ class Redis:
         return self.__instance
 
 
-rediscli = Redis()
+host = cfg.get("redis.host")
+port = cfg.get("redis.port")
+db = cfg.get("redis.db")
+rediscli = Redis(host, port, db)

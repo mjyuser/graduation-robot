@@ -18,6 +18,6 @@ class Mongo():
         return self.__instance
 
 
-host = cfg.get_key("mongo.host")
-port = cfg.get_key("mongo.port")
+host = cfg.get("mongo.host")
+port = cfg.get("mongo.port")
 mgocli = Mongo(host, port)
