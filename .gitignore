@@ -5,3 +5,4 @@ appliance/*
 */*.pyc
 captcha.png
 cookie.json
+logs/

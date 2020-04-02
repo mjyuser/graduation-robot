@@ -1,12 +1,13 @@
 # coding:utf-8
 import requests
 from bs4 import BeautifulSoup
-import model.airConditioner as Conditioner
-from model.db import mgocli, engine, redis_client
-from model.mgo_ac import mechina
+from model.db import redis_client
+from model.robot import robot
 from services import jd, sn, taobao
+from model.mongo import mgocli
 
 REDIS_KEY = "URL_MAP"
+
 
 def fetchAir(router):
     if router == "sn":
@@ -76,7 +77,7 @@ def getSuNing(key, page=0, offset=0):
             labels = ins.get_evaluate_labels()
             # 插入DB
 
-            model = mechina(mgocli.instance)
+            model = robot(mgocli.instance)
             data = {
                 "tags": img_box["title"],
                 "link": href,
@@ -112,4 +113,3 @@ def getSuNing(key, page=0, offset=0):
 def clear():
     print("clean db and redis data")
     redis_client.delete(REDIS_KEY, "JD_URL")
-    Conditioner.airConditioner.__table__.drop(engine)

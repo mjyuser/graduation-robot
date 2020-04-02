@@ -10,10 +10,10 @@ import json
 from services import chaojiying
 import requests
 import os
-from model.db import config, redis_client, mgocli
-from model.mgo_ac import mechina
+from model.db import config, redis_client
+from model.robot import robot
+from model.mongo import mgocli
 from bs4 import BeautifulSoup
-from sqlalchemy import exc
 from utils import helper
 
 
@@ -31,6 +31,8 @@ class taobao():
         self.driver.maximize_window()
         self.filepath = self.get_filepath()
         self.cookie = None
+        self.mgocli = robot(mgocli.instance)
+
         # 检查登录态
         self.__check_login()
         if self.cookie is None or self.cookie_expired is True:
@@ -165,7 +167,7 @@ class taobao():
                 count = 0
                 selector = (By.CSS_SELECTOR, "#mainsrp-pager > div > div > div > ul > li.item.next > a")
                 try:
-                    while count <= 50 or next_page is not None:
+                    while count <= 10 or next_page is not None:
                         self.__get_detail_url(self.driver.page_source)
                         #  模拟点击下一页
                         count = count + 1
@@ -179,7 +181,7 @@ class taobao():
                 self.__load_href()
 
             except Exception as e:
-                print("获取家电列表异常")
+                print("get rebot data failed")
                 print(e)
                 return
 
@@ -224,8 +226,9 @@ class taobao():
         price = origin_price = score = 0
         tags_str = labels_str = title = ""
         if basic is not None:
-            title_box = basic.select_one(".tb-detail-hd > h1 > a")
+            title_box = basic.select_one(".tb-detail-hd > h1")
             if title_box is None:
+                print("title box not found")
                 return
             # 标题
             title = title_box.get_text()
@@ -261,7 +264,7 @@ class taobao():
         try:
             self.driver.execute_script("window.scrollTo(0, 200)")
             tags_button = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "#J_TabBar > li:nth-child(3)")))
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#J_TabBar > li:nth-child(2)")))
             tags_button.click()
             self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#J_Reviews > div > "
                                                                              "div.rate-header")))
@@ -287,7 +290,6 @@ class taobao():
                     labels_str = ",".join(labels)
             else:
                 print("not found tag list")
-        model = mechina(mgocli.instance)
         data = {
             "tags": tags_str,
             "link": self.driver.current_url,
@@ -302,7 +304,7 @@ class taobao():
         }
 
         try:
-            model.insert(data)
+            self.mgocli.insert(data)
             redis_client.sadd(self.spider_key, href)
         except Exception as e:
             print("insert taobao data failed.", e)

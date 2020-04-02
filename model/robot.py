@@ -1,13 +1,15 @@
 # coding: utf-8
 from bson.objectid import ObjectId
+from utils.logger import logger
 
-class mechina():
+
+class robot():
     def __init__(self, mgocli):
         if mgocli is None:
-            print("mgocli is nil")
+            logger.error("mgocli is not init")
             return
-        self.__moncli = mgocli
-        self.__database = self.__moncli["graduation"]
+        self.__mogcli = mgocli
+        self.__database = self.__mogcli["graduation"]
         self.__table = self.__database["machine"]
 
     @property
@@ -23,7 +25,7 @@ class mechina():
     def insert(self, data):
         # data = self.__validate(data)
         if not isinstance(data, dict):
-            print("data must be instance of dict")
+            logger.error("data must be instance of dict")
             return False
         res = self.instance.insert_one(data)
         if res is not None:

@@ -3,8 +3,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
-from model.db import redis_client, mgocli
-from model.mgo_ac import mechina
+from model.db import redis_client
+from model.robot import robot
+from model.mongo import mgocli
 from utils import helper
 import requests
 import traceback
@@ -49,7 +50,7 @@ class jd:
             "fold": "1",
         }
 
-        self.mongocli = mechina(mgocli.instance)
+        self.mongocli = robot(mgocli.instance)
 
         # self.create_queue()
         # self.create_consumer()

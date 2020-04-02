@@ -1,14 +1,12 @@
 # -*- coding:utf-8 -*-
-from model.db import Base, engine
 from services import spiders
 import sys
 import getopt
-from model.airConditioner import airConditioner
 
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, "ha:r:c", ["help", "init", "router=", "clear"])
+        opts, args = getopt.getopt(argv, "ha:r:c", ["help", "router=", "clear"])
     except getopt.GetoptError:
         print("Error: fetch taobao home args error -r <router> -c")
         print(" or --router=<router> --clear --init")
@@ -17,8 +15,6 @@ def main(argv):
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             print_help()
-        elif opt == "--init":
-            init_db()
         elif opt in ("-r", "--router"):
             spiders.fetchAir(arg)
         elif opt in ("-c", "--clear"):
@@ -31,16 +27,6 @@ def print_help():
     print("the script is fetch something website with home")
     print("main.py -r <router> -c")
     print(" or --init --router=<router> --clear")
-
-
-def init_db():
-    Base.metadata.create_all(engine)
-
-
-def testOrm():
-    items = airConditioner.find_all_by_platform("淘宝")
-    if len(items) > 0:
-        print(items[0])
 
 
 if __name__ == "__main__":

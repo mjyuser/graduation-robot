@@ -17,18 +17,42 @@ class config:
         f = open(yaml_path, encoding="utf-8")
         content = f.read()
         data = yaml.safe_load(content)
-        self.database = data["database"]
-        self.redis_config = data['redis']
-        self.chaojiying = data['chaojiying']
-        self.weibo = data['weibo']
-        self.mongo = data['mongo']
-
-        self.itemName = data['itemName']
+        self.__data = data
+        for k, v in data.items():
+            setattr(self, k, v)
+        # self.database = data["database"]
+        # self.redis_config = data['redis']
+        # self.chaojiying = data['chaojiying']
+        # self.weibo = data['weibo']
+        # self.mongo = data['mongo']
+        #
+        # self.itemName = data['itemName']
 
     def get(self, key):
         if hasattr(self, key):
             return getattr(self, key)
         return ""
 
+    def get_key(self, key):
+        keys = str.split(key, ".")
+        val = self.__search_key(keys, self.__data)
+        return val
+
+    # 解析.分割的key
+    # mongo.key, redis.host
+    def __search_key(self, keys, data):
+        if len(keys) > 0:
+            key = keys.pop(0)
+            if isinstance(data, dict):
+                if key in data:
+                    if len(keys) == 0:
+                        return data[key]
+                    else:
+                        return self.__search_key(keys, data[key])
+        return ""
+
     def get_item_name(self):
         return self.get("itemName")
+
+
+cfg = config()
