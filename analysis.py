@@ -134,8 +134,18 @@ def get_pie():
     plt.show()
 
 
-# 时间序列
 # get_pie()
-def get_predict():
+# todo 销量数据
+def get_scatter():
     an = analysis()
-    data = an.mongo.instance.find({})
+    sales, prices = an.mongo.create_sale_data()
+    plt.scatter(prices, sales)
+    plt.xlabel("价格", fontproperties=get_font())
+    plt.ylabel("销量", fontproperties=get_font())
+    plt.title("商品价格对销量的影响", fontproperties=get_font())
+    plt.show()
+
+
+if __name__ == "__main__":
+    # main(sys.argv[1:])
+    get_scatter()

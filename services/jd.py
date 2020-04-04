@@ -178,7 +178,7 @@ class jd:
         return response.content
 
     def is_spider(self, href):
-        data = self.mongocli.find_one({"link": href})
+        data = self.mongocli.find_one_by_query({"link": href})
         return self.redis.sismember(self.href_map, href) or data is not None
 
     def get_jd_data(self, key):
