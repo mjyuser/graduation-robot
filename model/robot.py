@@ -45,5 +45,5 @@ class robot():
             _id = ObjectId(_id)
         return self.instance.find_one({"_id": _id})
 
-    def find(self, query):
+    def find_one(self, query):
         return self.instance.find_one(query)
