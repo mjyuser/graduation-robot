@@ -17,7 +17,6 @@ class Mongo():
     def instance(self):
         return self.__instance
 
-
 host = cfg.get("mongo.host")
 port = cfg.get("mongo.port")
 mgocli = Mongo(host, port)
